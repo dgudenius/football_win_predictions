@@ -1,15 +1,17 @@
 import csv
 import math
 
-past_games = 8        # Past Games to include in Pythagorean Win Projection (must be integer greater than 3) (~8 ?)
-v_value = 1            # Rate at which previous seasons are discounted (not yet in use)
-wf = 1.39               # Exponential for Pythagorean calcs, default for football is 2.37(?) (must be a float) (~1.39 seems good) (2.1?)
-HFA = 7.2              # home field advantage as percentage, default is 5.5 (~7.4 seems good)
-team_below_min = 32.25 # Expected win percentage by teams that have played 1 game (must be float) (32.25 seems good)
-new_team = 27.5        # Expected win percentage by team in first game (must be float) (27.5 seems good)
-a_factor = 2.465         # Exponential factor to compare Expected Wins Head to Head (2.465 seems good - 1.6?)
-expect_points = 45.7   # Expected total points for calculating point differential (45.7 is ~league average points/game)
-percent_mine = 27.5    # % using Pwin instead of Elo (must be float) (try 27.5?)
+past_games = 32          # Past Games to include in Pythagorean Win Projection (must be integer greater than 3) (~18 ?)
+v_value = 4.1             # Rate at which previous seasons are discounted (~ 4 seems good)
+wf = 1.39                # Exponential for Pythagorean calcs, default for football is 2.37(?) (must be a float) (~1.39 seems good/2.1)
+HFA = 7.2               # home field advantage as percentage, default is 5.5 (~7.4 seems good)
+team_below_min = 32.25  # Expected win percentage by teams that have played 1 game (must be float) (32.25 seems good)
+new_team = 27.5         # Expected win percentage by team in first game (must be float) (27.5 seems good)
+a_factor = 2.45         # Exponential factor to compare Expected Wins Head to Head (2.465 seems good/1.6)
+expect_points = 44.7    # Expected total points for calculating point differential (45.7 is ~league average points/game)
+percent_mine = 97.0     # % using Pwin instead of Elo (must be float)
+percent_win_chart = 3.0 # % using expected win chart (must be float)
+b_factor = 0.905        # Exponential factor to compare Win Chart values Head to Head (0.9 seems good)
 K = 20.7
 REVERT = 1/2.97
 y_factor  = 1.9        # Multiplier for points expectations (try 1.9?)
@@ -20,10 +22,10 @@ REVERSIONS = {'CBD1925': 1502.032, 'RAC1926': 1403.384, 'LOU1926': 1307.201, 'CI
               'BFF1929': 1331.943, 'LAR1944': 1373.977, 'PHI1944': 1497.988, 'ARI1945': 1353.939, 'PIT1945': 1353.939, 'CLE1999': 1300.0}
 
 
-class Combined:
+class Combined2:
 
     @staticmethod
-    def combined(games):
+    def combined2(games):
         """ Generates win probabilities in the my_prob1 field for each game based on Pythagorean Win Theorem model """
 
         # Initialize team objects(?)
@@ -35,7 +37,10 @@ class Combined:
                 'Pwin': float(new_team/100),
                 'Pfor': [],
                 'Pagainst': [],
-                'elo': float(row['elo'])
+                'elo': float(row['elo']),
+                'Wfor' : [],
+                'WforSum' : 0,
+                'WinTable' : .5
             }
 
         for game in games:
@@ -44,6 +49,9 @@ class Combined:
             # Revert teams at the start of seasons
             for team in [team1, team2]:
                 if team['season'] and game['season'] != team['season']:
+                    team['Wfor'] = []
+                    team['Pfor'][:] = [n / v_value for n in team['Pfor']]
+                    team['Pagainst'][:] = [n / v_value for n in team['Pagainst']]
                     k = "%s%s" % (team['name'], game['season'])
                     if k in REVERSIONS:
                         team['elo'] = REVERSIONS[k]
@@ -61,11 +69,12 @@ class Combined:
              #    game['my_prob1'] = .5+my_diff
                  game['my_prob1'] = (team1['Pwin']+(HFA/100))**a_factor/((team1['Pwin']+(HFA/100))**a_factor+team2['Pwin']**a_factor)
                  game['my_prob2'] = 1.0 / (math.pow(10.0, (-elo_diff / 400.0)) + 1.0)
-                 game['my_prob1'] = (percent_mine/100)*game['my_prob1']+(1-percent_mine/100)*game['my_prob2']
-                 game['point_diff'] = ((expect_points * game['my_prob1']) - (expect_points / 2))
-                 game['point_diff2'] =(y_factor*(abs(((expect_points * game['my_prob1']) - (expect_points / 2)))))**(1/x_factor)
-                 if game['point_diff'] <0:
-                     game['point_diff2'] = -game['point_diff2']
+                 game['my_prob3'] = (team1['WinTable']+(HFA/100)**b_factor/((team1['WinTable']+(HFA/100))**b_factor+team2['WinTable']**a_factor))
+                 game['my_prob1'] = (percent_mine/100)*game['my_prob1']+((percent_win_chart/100)*game['my_prob3'])+((1-((percent_mine/100)+(percent_win_chart/100)))*game['my_prob2'])
+                 game['point_diff'] = (expect_points * game['my_prob1']) - (expect_points / 2)
+                 game['point_diff2'] = (y_factor * (abs(((expect_points * game['my_prob1']) - (expect_points / 2))))) ** ( 1 / x_factor)
+                 if game['point_diff'] < 0:
+                    game['point_diff2'] = -game['point_diff2']
 
             # If game was played, maintain team Elo ratings
             if game['score1'] != None:
@@ -89,7 +98,11 @@ class Combined:
                 team1['Pagainst'].append(game['score2'])
                 team2['Pfor'].append(game['score2'])
                 team2['Pagainst'].append(game['score1'])
-              #  print (team1['Pfor'])
+
+            # Add Wins to team arrays
+                team1['Wfor'].append(game['result1'])
+                team2['Wfor'].append(1-game['result1'])
+
             # Sum team all time points
                 team1['PforSum']=(sum(team1['Pfor']))
                 team1['PagainstSum'] = (sum(team1['Pagainst']))
@@ -98,7 +111,7 @@ class Combined:
 
 
                 if len(team1['Pfor']) <= past_games and (team1['PforSum'] or team1['PagainstSum']) != 0:
-                   team1['Pwin'] = ((team1['PforSum'])**wf)/(((team1['PforSum'])**wf)+(team1['PagainstSum'])**wf)
+                   team1['Pwin'] = ((team1['PforSum'])**wf)/((sum(team1['Pfor']))**wf+(sum(team1['Pagainst']))**wf)
                 elif len(team1['Pfor']) > past_games and (team1['PforSum'] or team1['PagainstSum']) !=0:
                   #  print len(team1['Pfor'])
                     # Sum points for games in past_games range
@@ -119,3 +132,61 @@ class Combined:
                     team2['Pwin'] = ((sum(team2['Pfor'][len(team2['Pfor'])-past_games:]))**wf)/(((sum(team2['Pfor'][len(team2['Pfor'])-past_games:]))**wf)+((sum(team2['Pagainst'][len(team2['Pagainst'])-past_games:]))**wf))
                 else:
                     team2['Pwin'] = team_below_min/100
+
+
+                if len(team1['Wfor']) < 8:
+                    team1['WinTable'] = .5
+                    team1['WforSumInRange'] = 4
+                else:
+                    team1['WforSum'] = sum(team1['Wfor'])
+                    team1['WforSumInRange'] = (sum(team1['Wfor'][len(team1['Wfor']) - 8:]))
+                    # print(team1['WforSumInRange'])
+                if team1['WforSumInRange'] == 8.0:
+                    team1['WinTable'] = .675
+                elif team1['WforSumInRange'] == 7.0:
+                    team1['WinTable'] = .675
+                elif team1['WforSumInRange'] == 6.0:
+                    team1['WinTable'] = .6
+                elif team1['WforSumInRange'] == 5.0:
+                    team1['WinTable'] = .5875
+                elif team1['WforSumInRange'] == 4.0:
+                    team1['WinTable'] = .4875
+                elif team1['WforSumInRange'] == 3.0:
+                    team1['WinTable'] = .4375
+                elif team1['WforSumInRange'] == 2.0:
+                    team1['WinTable'] = .3625
+                elif team1['WforSumInRange'] == 1.0:
+                    team1['WinTable'] = .35
+                elif team1['WforSumInRange'] == 0.0:
+                    team1['WinTable'] = .3125
+                else:
+                    team1['WinTable'] = .5
+
+                if len(team2['Wfor']) < 8:
+                    team2['WinTable'] = .5
+                    team2['WforSumInRange'] = 4
+                else:
+                    team2['WforSum'] = sum(team1['Wfor'])
+                    team2['WforSumInRange'] = (sum(team1['Wfor'][len(team1['Wfor']) - 8:]))
+               #  print(team2['WforSumInRange'])
+                if   team2['WforSumInRange'] == 8.0:
+                     team2['WinTable'] = .675
+                elif team2['WforSumInRange'] == 7.0:
+                     team2['WinTable'] = .675
+                elif team2['WforSumInRange'] == 6.0:
+                     team2['WinTable'] = .6
+                elif team2['WforSumInRange'] == 5.0:
+                     team2['WinTable'] = .5875
+                elif team2['WforSumInRange'] == 4.0:
+                     team2['WinTable'] = .4875
+                elif team2['WforSumInRange'] == 3.0:
+                     team2['WinTable'] = .4375
+                elif team2['WforSumInRange'] == 2.0:
+                     team2['WinTable'] = .3625
+                elif team2['WforSumInRange'] == 1.0:
+                     team2['WinTable'] = .35
+                elif team2['WforSumInRange'] == 0.0:
+                     team2['WinTable'] = .3125
+                else:
+                     team2['WinTable'] = .5
+        print(teams['CAR']['Wfor'])

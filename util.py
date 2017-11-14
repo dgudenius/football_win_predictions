@@ -62,6 +62,8 @@ class Util:
                 my_points *= 2
             my_points_by_season[game['season']] += my_points
 
+
+
         # Print individual seasons
         for season in my_points_by_season:
             print("In %s, your forecasts would have gotten %s points. Elo got %s points." % (
@@ -77,7 +79,7 @@ class Util:
         if len(upcoming_games) > 0:
             print("Forecasts for upcoming games:")
             for game in upcoming_games:
-                print("%s\t%s vs. %s\t\t%s%% (Elo)\t\t%s%% (You) Point Diff %s" % (
+                print("%s\t%s vs. %s\t\t%s%% (Elo)\t\t%s%% (You) Point Diff %s    Point Diff2 %s" % (
                 game['date'], game['team1'], game['team2'], int(round(100 * game['elo_prob1'])),
-                int(round(100 * game['my_prob1'])),game['point_diff']))
+                int(round(100 * game['my_prob1'])),game['point_diff'],game['point_diff2']))
             print("")
